@@ -593,10 +593,10 @@ function Timeline({
   const externalSignal = inlineTarget?.signal ?? navigation?.signal;
   // A date jump supersedes the visit it started over; a newer visit cancels it.
   const [jumpedOver, setJumpedOver] = useState<AbortSignal>();
-  const cancelJump = dates.cancel;
+  const cancelDate = dates.cancel;
   useLayoutEffect(() => {
-    if (externalSignal && externalSignal !== jumpedOver) cancelJump();
-  }, [externalSignal, jumpedOver, cancelJump]);
+    if (externalSignal && externalSignal !== jumpedOver) cancelDate();
+  }, [externalSignal, jumpedOver, cancelDate]);
   const startJump = dates.jump;
   const jumpTo = useCallback(
     (from: number) => {
@@ -900,6 +900,8 @@ function Timeline({
   }, []);
   const jumpToLatest = useCallback(() => {
     if (!handle.current || !rows.length) return;
+    // Latest supersedes a pending date jump, silently.
+    cancelDate();
     if (detachedNow.current) {
       attaching.current = true;
       queries.channels.attach?.(channelId);
@@ -919,7 +921,7 @@ function Timeline({
       align: "end",
       ...(tailHeight ? { offset: tailHeight } : {}),
     });
-  }, [rows.length, queries, channelId]);
+  }, [rows.length, queries, channelId, cancelDate]);
   const targetIndex = rows.findIndex(
     (row) => row.id === (containedOwners.get(targetId ?? "") ?? targetId),
   );
@@ -1625,9 +1627,10 @@ function Timeline({
     if (revealMessageId === sent.current) return;
     sent.current = revealMessageId;
     if (!revealMessageId || !detachedNow.current) return;
+    cancelDate();
     attaching.current = true;
     queries.channels.attach?.(channelId);
-  }, [revealMessageId, queries, channelId]);
+  }, [revealMessageId, queries, channelId, cancelDate]);
   const gesture = (upward = false) => {
     const restoring = pendingRestore.current === intent.current;
     restoredAnchor.current = undefined;
