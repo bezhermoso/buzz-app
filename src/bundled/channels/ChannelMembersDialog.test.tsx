@@ -2728,7 +2728,7 @@ it.each([false, true])(
       await t.user.click(screen.getByRole("button", { name: "Access" }));
       await screen.findByText(/The member list could not load/);
       await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
-      const control = screen.getByRole("combobox", { name: "Who can read" });
+      const control = screen.getByRole("combobox", { name: "General access" });
       expect(control).toBeDisabled();
       t.query.mockImplementation(query);
       if (signInBeforeRefusal) act(() => t.session.recovery?.retryAll());
@@ -2817,20 +2817,29 @@ it.each(["public", "private"] as const)(
     ).toBeVisible();
     await vi.waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Who can read" }),
+        screen.getByRole("combobox", { name: "General access" }),
       ).toBeEnabled(),
     );
-    if (visibility === "public") {
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+    expect(
+      screen.getByRole("combobox", { name: "General access" }),
+    ).toHaveTextContent(visibility === "public" ? "View only" : "Private");
+    const access = screen.getByRole("combobox", { name: "General access" });
+    const done = screen.getByRole("button", { name: "Done" });
+    expect(access.closest("footer")).toContainElement(done);
+    const refresh = screen.getByRole("button", { name: "Refresh member data" });
+    expect(refresh.closest("header")).toBeNull();
+    expect(refresh.parentElement).toContainElement(
+      screen.getByRole("searchbox"),
+    );
+    expect(access).toHaveAttribute("data-size", "md");
+    expect(
+      access.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    if (visibility === "private") {
       expect(
-        screen.getByRole("combobox", { name: "New people can" }),
-      ).toHaveTextContent("View only");
-    } else {
-      expect(
-        screen.queryByRole("combobox", { name: "New people can" }),
+        screen.queryByText("Only people you add can read this channel."),
       ).not.toBeInTheDocument();
-      expect(
-        screen.getByText("Only people you add can read this channel."),
-      ).toBeVisible();
     }
     expect(
       await within(

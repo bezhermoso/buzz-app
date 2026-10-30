@@ -461,44 +461,21 @@ it("adds a person at once under the chat's share rule, by Add or Enter", async (
   expect(within(dialog).getByRole("button", { name: "Done" })).toBeEnabled();
 });
 
-it("Copy alone neither saves selections nor grants access", async () => {
+it("closing a staged share discards selections without granting access", async () => {
   const t = fixture();
   await t.ready();
   const user = userEvent.setup();
   t.mount();
   await user.click(screen.getByRole("button", { name: "Access" }));
   const dialog = screen.getByRole("dialog", { name: "Share access" });
-  const clipboard = vi
-    .spyOn(navigator.clipboard, "writeText")
-    .mockResolvedValue();
   await chooseDestination(user, dialog);
-  await user.click(within(dialog).getByRole("button", { name: "Copy link" }));
-  expect(clipboard).toHaveBeenCalledWith(`buzz://channel/${source}`);
-  const copied = within(dialog).getByRole("button", { name: "Link copied" });
-  expect(copied).toHaveFocus();
-  expect(within(dialog).getAllByText("Link copied")).toHaveLength(1);
-  clipboard.mockRejectedValueOnce(new Error("Clipboard unavailable"));
-  await user.click(copied);
-  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-    "Couldn’t copy the link.",
-  );
-  await user.click(within(dialog).getByRole("button", { name: "Copy link" }));
-  expect(
-    within(dialog).getByRole("button", { name: "Link copied" }),
-  ).toHaveFocus();
-  expect(within(dialog).queryByRole("alert")).toBeNull();
+  expect(within(dialog).getByRole("button", { name: "Share" })).toBeEnabled();
   expect(t.publish).not.toHaveBeenCalled();
   await user.click(within(dialog).getByRole("button", { name: "Close" }));
   await user.click(screen.getByRole("button", { name: "Access" }));
-  expect(
-    search(screen.getByRole("dialog", { name: "Share access" })),
-  ).toHaveValue("");
-  expect(
-    within(screen.getByRole("dialog", { name: "Share access" })).getByRole(
-      "button",
-      { name: "Copy link" },
-    ),
-  ).toBeEnabled();
+  const reopened = screen.getByRole("dialog", { name: "Share access" });
+  expect(search(reopened)).toHaveValue("");
+  expect(within(reopened).getByRole("button", { name: "Done" })).toBeEnabled();
   expect(t.publish).not.toHaveBeenCalled();
 });
 

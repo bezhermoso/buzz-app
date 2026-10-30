@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
 import type { ChannelDetailsCapability } from "../../features/relay/channel-details";
 import type { ChannelSummary } from "../../features/relay/contracts";
@@ -18,77 +17,35 @@ import { Button } from "../../shared/design-system/ui/Button";
 import { AlertDialog } from "../../shared/design-system/ui/AlertDialog";
 import { Select } from "../../shared/design-system/ui/Select";
 import { Avatar } from "../../shared/design-system/ui/Avatar";
-import { Field } from "../../shared/design-system/ui/Field";
-import type { CommunityReader } from "../../features/communities/service";
-import { communityName } from "../../features/communities/names";
-import { communityFromScope } from "../../features/relay/gifs";
-import { communityDestination } from "../../features/communities/destination";
 import {
   CircleNotchIcon,
   LockIcon,
   GlobeIcon,
+  EyeIcon,
 } from "../../shared/design-system/icons";
 import styles from "./ChannelMembersDialog.module.css";
 import { privacyConsequence } from "./ChannelPrivacyConfirmation";
-
-const noCommunitySubscription = () => () => {};
-const participationOptions = [
-  {
-    label: "",
-    options: [
-      {
-        value: "member",
-        label: "Participate",
-        description: "Send messages, reply, and react.",
-      },
-      {
-        value: "guest",
-        label: "View only",
-        description: "Read messages and threads.",
-      },
-    ],
-  },
-];
+import { soloLabels } from "../../features/solo/labels";
 
 /** General access uses the same signed save/readback owner as channel details.
- * Choices are confirmed individually, like the member rows above this section. */
+ * Each policy is confirmed once, like the individual member roles. */
 export function ChannelGeneralAccess({
-  communityReader,
-  communityScope,
   capability,
   recovery,
   channelId,
   channel,
 }: {
-  communityReader?: CommunityReader | undefined;
-  communityScope?: string | undefined;
   capability: ChannelDetailsCapability;
   recovery?: RelayRecovery | undefined;
   channelId: string;
   channel?: ChannelSummary;
 }) {
-  const origin = communityScope ? communityFromScope(communityScope) : null;
-  const community = useSyncExternalStore(
-    communityReader?.subscribe ?? noCommunitySubscription,
-    () =>
-      communityReader
-        ?.snapshot()
-        .memberships.find(
-          (entry) => communityDestination(entry.id).url === origin,
-        ),
-  );
-  const communityAvatar = (size: "compact" | "default") =>
-    community ? (
-      <Avatar
-        alt=""
-        src={community.publishedIcon ?? community.icon}
-        fallback={communityName(community)}
-        shape="squircle"
-        size={size}
-      />
-    ) : (
-      <GlobeIcon size={24} />
-    );
+  const Icon =
+    channel?.visibility === "public"
+      ? channel.joinRole === "guest"
+        ? EyeIcon
+        : GlobeIcon
+      : LockIcon;
   // Public previews and Guests can inspect signed discovery metadata without
   // calling the membership/write-gated channel-details capability.
   if (channel?.readOnly)
@@ -96,16 +53,12 @@ export function ChannelGeneralAccess({
       <section aria-label="General access" className={styles.generalAccess}>
         <div className={styles.accessRow}>
           <span className={styles.accessIcon} aria-hidden="true">
-            {channel.visibility === "public" ? (
-              communityAvatar("default")
-            ) : (
-              <Avatar
-                alt=""
-                fallback=""
-                fallbackContent={<LockIcon size={24} />}
-                shape="squircle"
-              />
-            )}
+            <Avatar
+              alt=""
+              fallback=""
+              fallbackContent={<Icon size={24} />}
+              shape="squircle"
+            />
           </span>
           <div className={styles.accessAudience}>
             <p className="text-body-sm">
@@ -131,7 +84,6 @@ export function ChannelGeneralAccess({
       capability={capability}
       recovery={recovery}
       channelId={channelId}
-      communityAvatar={communityAvatar}
     />
   );
 }
@@ -140,12 +92,10 @@ function ChannelGeneralAccessEditor({
   capability,
   recovery,
   channelId,
-  communityAvatar,
 }: {
   capability: ChannelDetailsCapability;
   recovery: RelayRecovery | undefined;
   channelId: string;
-  communityAvatar: (size: "compact" | "default") => ReactNode;
 }) {
   const attempt = useSyncExternalStore(capability.subscribe, () =>
     capability.snapshot(channelId),
@@ -197,14 +147,41 @@ function ChannelGeneralAccessEditor({
     return () => controller.abort();
   }, [load]);
   const locked = loading || pending || !!attempt || !base?.canEdit;
-  function choose(patch: Partial<ChannelDetailsDraft>, index: number) {
+  const solo = soloLabels(base?.labels);
+  const place = solo ? "chat" : "channel";
+  const access = !base
+    ? ""
+    : base.visibility === "private"
+      ? "private"
+      : base.joinRole === "guest"
+        ? "view-only"
+        : "public";
+  const Icon =
+    access === "public"
+      ? GlobeIcon
+      : access === "view-only"
+        ? EyeIcon
+        : LockIcon;
+  function choose(value: string) {
     if (locked || !base) return;
+    if (
+      value === access ||
+      !["private", "public", "view-only"].includes(value) ||
+      (solo && value === "public")
+    )
+      return;
     origin.current =
-      section.current?.querySelectorAll<HTMLElement>('[role="combobox"]')[
-        index
-      ] ?? null;
+      section.current?.querySelector<HTMLElement>('[role="combobox"]') ?? null;
     setError("");
-    setChoice({ ...base, ...patch });
+    // Private preserves even an older Guest admission default. Public choices
+    // set both fields explicitly so the label always describes the saved policy.
+    setChoice({
+      ...base,
+      visibility: value === "private" ? "private" : "public",
+      ...(value === "private"
+        ? {}
+        : { joinRole: value === "view-only" ? "guest" : "member" }),
+    });
   }
   async function apply(check = false) {
     const controller = lifetime.current;
@@ -247,95 +224,64 @@ function ChannelGeneralAccessEditor({
       ref={section}
       aria-label="General access"
       tabIndex={-1}
-      className={styles.generalAccess}
+      className={styles.accessControl}
     >
-      <div className={styles.accessRow} aria-busy={loading || pending}>
-        <span
-          className={`${styles.accessIcon} ${styles.accessEditableIcon}`}
-          aria-hidden="true"
-        >
-          {pending ? (
-            <CircleNotchIcon
-              size={24}
-              aria-hidden="true"
-              className="motion-safe:animate-spin"
-            />
-          ) : base?.visibility === "public" ? (
-            communityAvatar("default")
-          ) : (
-            <Avatar
-              alt=""
-              fallback=""
-              fallbackContent={<LockIcon size={24} />}
-              shape="squircle"
-            />
-          )}
-        </span>
-        <div className={styles.accessAudience}>
-          <Select
-            variant="compact"
-            appearance="link"
-            size="sm"
-            label="Who can read"
-            value={base?.visibility ?? ""}
-            placeholder={loading ? "Loading access…" : "Access unavailable"}
-            disabled={locked}
-            groups={[
-              {
-                label: "",
-                options: [
-                  {
-                    value: "public",
-                    label: "Public",
-                    leading: communityAvatar("compact"),
-                  },
-                  {
-                    value: "private",
-                    label: "Private",
-                    leading: <LockIcon size={20} />,
-                  },
-                ],
-              },
-            ]}
-            onValueChange={(visibility) => {
-              if (
-                (visibility === "public" || visibility === "private") &&
-                visibility !== base?.visibility
-              )
-                choose({ visibility }, 0);
-            }}
-          />
-          <p className="text-caption text-subtle">
-            {!base
-              ? loading
-                ? "Checking channel access…"
-                : "Channel access could not be confirmed."
-              : base.visibility === "public"
-                ? `Anyone in the community can find and ${base.joinRole === "guest" ? "view" : "participate"}.`
-                : "Only people you add can read this channel."}
-          </p>
-        </div>
-        {base?.visibility !== "private" && (
-          <div className={styles.accessRole}>
-            <Select
-              variant="compact"
-              appearance="outlined"
-              label="New people can"
-              align="end"
-              value={base ? (base.joinRole ?? "member") : ""}
-              placeholder={loading ? "Loading access…" : "Access unavailable"}
-              disabled={locked}
-              groups={participationOptions}
-              onValueChange={(joinRole) => {
-                if (
-                  (joinRole === "member" || joinRole === "guest") &&
-                  joinRole !== (base?.joinRole ?? "member")
-                )
-                  choose({ joinRole }, 1);
-              }}
-            />
-          </div>
-        )}
+      <div className={styles.accessAudience} aria-busy={loading || pending}>
+        <Select
+          variant="compact"
+          align="start"
+          leading={
+            pending ? (
+              <CircleNotchIcon size={20} className="motion-safe:animate-spin" />
+            ) : (
+              <Icon size={20} />
+            )
+          }
+          size="md"
+          label="General access"
+          value={access}
+          valueLabel={
+            solo && access === "public" ? "Public (existing)" : undefined
+          }
+          placeholder={loading ? "Loading access…" : "Access unavailable"}
+          disabled={locked}
+          groups={[
+            {
+              label: "",
+              options: [
+                ...(!solo
+                  ? [
+                      {
+                        value: "public",
+                        label: "Public",
+                        description: "Anyone in the community can participate.",
+                        leading: <GlobeIcon size={20} />,
+                      },
+                    ]
+                  : []),
+                {
+                  value: "view-only",
+                  label: "View only",
+                  description: "Anyone in the community can read.",
+                  leading: <EyeIcon size={20} />,
+                },
+              ],
+            },
+            {
+              label: "",
+              separator: true,
+              options: [
+                {
+                  value: "private",
+                  label: "Private",
+                  description: "Only people you add can access.",
+                  leading: <LockIcon size={20} />,
+                },
+              ],
+            },
+          ]}
+          onValueChange={choose}
+        />
       </div>
       {error && (
         <p role="alert" className="text-body-sm text-danger">
@@ -371,11 +317,20 @@ function ChannelGeneralAccessEditor({
       {choice && base && (
         <AlertDialog
           title="Change general access?"
-          description={
+          description={[
             choice.visibility !== base.visibility
-              ? privacyConsequence(choice.visibility)
-              : `New people will ${choice.joinRole === "guest" ? "only be able to view" : "be able to participate"}. People already in the channel keep their access.`
-          }
+              ? solo
+                ? choice.visibility === "public"
+                  ? "Everyone in this community will be able to view this chat’s full history."
+                  : "Only chat members will have access."
+                : privacyConsequence(choice.visibility)
+              : "",
+            choice.visibility === "public"
+              ? `New people will ${choice.joinRole === "guest" ? "only be able to view" : "be able to participate"}. People already in the ${place} keep their access.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           onClose={() => setChoice(undefined)}
           initialFocus={cancel}
           finalFocus={origin}
@@ -393,30 +348,13 @@ function ChannelGeneralAccessEditor({
               </Button>
             </>
           }
-        >
-          {base.visibility === "private" && choice.visibility === "public" && (
-            <Field
-              label={<span className="text-caption">New people can</span>}
-              nativeLabel={false}
-            >
-              <Select
-                variant="compact"
-                appearance="outlined"
-                size="md"
-                label="New people can"
-                value={choice.joinRole ?? "member"}
-                disabled={locked}
-                groups={participationOptions}
-                onValueChange={(joinRole) => {
-                  if (joinRole === "member" || joinRole === "guest")
-                    setChoice((current) => current && { ...current, joinRole });
-                }}
-              />
-            </Field>
-          )}
-        </AlertDialog>
+        />
       )}
-      <p role="status" aria-atomic="true" className="sr-only">
+      <p
+        role="status"
+        aria-atomic="true"
+        className={`${styles.accessStatus} sr-only`}
+      >
         {status}
       </p>
     </section>

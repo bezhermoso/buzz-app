@@ -1,5 +1,5 @@
-[role="dialog"]:has(.layout > .generalAccess) {
-  /* Reserve room for the access footer as text grows; retain the usual gutter
+[role="dialog"]:has(.layout > .generalAccess, .accessControl) {
+  /* Reserve room for access controls as text grows; retain the usual gutter
      when the viewport has enough height. Narrow windows retain the fallback. */
   --dialog-top: clamp(1rem, calc(100dvh - 40rem), 8rem);
 }
@@ -180,21 +180,24 @@
 }
 
 .generalAccess {
-  container-type: inline-size;
   border-top: 1px solid var(--border-standard);
-  padding: var(--space-2) 0 0 var(--space-row-gap);
+  padding: var(--space-2) 0 0;
 }
-.generalAccess > :where(.accessRow) ~ * {
+/* Hidden announcements must retain their own clipping and negative margin. */
+.generalAccess > :where(.accessRow) ~ *,
+.accessControl > :where(.accessAudience) ~ :not(.accessStatus) {
   margin-block-start: var(--space-3);
+}
+.accessControl {
+  min-width: 0;
+  max-width: 100%;
 }
 .accessRow {
   display: grid;
-  grid-template-columns:
-    var(--size-control-sm) minmax(0, 1fr)
-    auto;
+  grid-template-columns: var(--size-control-sm) minmax(0, 1fr);
   align-items: start;
   gap: var(--space-row-gap);
-  padding-block: var(--space-half);
+  padding: var(--space-half) 0 var(--space-half) var(--space-row-gap);
 }
 .accessIcon {
   display: flex;
@@ -208,10 +211,6 @@
 .accessRow > .accessIcon {
   width: 100%;
 }
-/* The 24px link target extends 4px above its 20px text line. */
-.accessEditableIcon {
-  translate: 0 var(--space-half);
-}
 .accessAudience {
   display: grid;
   min-width: 0;
@@ -221,11 +220,6 @@
 .accessAudience > * {
   max-width: 100%;
 }
-.accessRole {
-  min-width: 0;
-  align-self: center;
-  margin-inline-start: var(--space-2);
-}
 @media (max-width: 480px) {
   .member:has(> .addAction[data-split]) .staticProfile > span > span {
     flex-direction: column;
@@ -234,16 +228,5 @@
   }
   .member:has(> .addAction[data-split]) .name {
     max-width: 100%;
-  }
-}
-/* Reflow against the dialog's available space, including enlarged text. */
-@container (max-width: 28rem) {
-  .accessRow {
-    grid-template-columns: var(--size-control-sm) minmax(0, 1fr);
-  }
-  .accessRole {
-    grid-column: 2;
-    justify-self: start;
-    margin-inline-start: 0;
   }
 }

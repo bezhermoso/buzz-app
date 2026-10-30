@@ -1186,21 +1186,20 @@ it.each(["failed", "uncertain"])(
 );
 
 it.each([true, false])(
-  "refreshes roster and roles from the header without writes (writer: %s)",
+  "refreshes roster and roles beside search without writes (writer: %s)",
   async (supported) => {
     const t = await setup("owner", "member", supported);
     const section = screen.getByRole("region", { name: "People" });
     const dialog = screen.getByRole("dialog", { name: "Manage members" });
-    const header = required(dialog.querySelector("header"));
-    const refresh = within(header).getByRole("button", {
+    const refresh = within(dialog).getByRole("button", {
       name: "Refresh member data",
-    });
-    const close = within(header).getByRole("button", {
-      name: "Close",
     });
     expect(refresh).toHaveAttribute("data-variant", "ghost");
     expect(refresh).toHaveAttribute("data-icon-size", "compact");
-    expect(refresh.nextElementSibling).toBe(close);
+    expect(refresh.parentElement).toContainElement(
+      screen.getByRole("searchbox"),
+    );
+    expect(refresh.closest("header")).toBeNull();
     await vi.waitFor(() =>
       expect(refresh).not.toHaveAttribute("aria-disabled", "true"),
     );
@@ -1757,32 +1756,42 @@ it("filters by present groups and resets to All on any search input", async () =
   const t = await setup("admin", "member", true, undefined, true);
   const list = screen.getByRole("region", { name: "Member list" });
   const filter = () =>
-    screen.getByRole("combobox", { name: "Filter people and agents" });
-  expect(filter()).toHaveTextContent("All");
+    screen.getByRole("button", { name: /^Filter people and agents:/ });
+  expect(filter()).toHaveAccessibleName("Filter people and agents: All");
+  expect(filter()).toHaveAttribute("data-variant", "ghost");
+  expect(filter().closest(".buzz-input-group")).toContainElement(
+    screen.getByRole("searchbox"),
+  );
   await t.user.click(filter());
-  await screen.findByRole("option", { name: /^All/ });
-  expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual(
-    ["All · 3", "People · 2", "Agents · 1"],
-  );
-  expect(screen.getByRole("option", { name: "All · 3" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await t.user.click(screen.getByRole("option", { name: "Agents · 1" }));
+  await screen.findByRole("menuitemradio", { name: /^All/ });
+  expect(
+    screen.getAllByRole("menuitemradio").map((item) => item.textContent),
+  ).toEqual(["All · 3", "People · 2", "Agents · 1"]);
+  expect(
+    screen.getByRole("menuitemradio", { name: "All · 3" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await t.user.click(screen.getByRole("menuitemradio", { name: "Agents · 1" }));
   expect(within(list).getByText("Morgan")).toBeVisible();
   expect(within(list).queryByText("Carl (you)")).not.toBeInTheDocument();
   expect(within(list).queryByText("Owner")).not.toBeInTheDocument();
-  expect(filter()).toHaveTextContent("Agents");
+  expect(filter()).toHaveAccessibleName("Filter people and agents: Agents");
+  expect(filter()).toHaveAttribute("data-variant", "prominent");
   // Whitespace still starts search mode, even though matching trims it.
   await t.user.type(screen.getByRole("searchbox"), " ");
-  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /^Filter people and agents:/ }),
+  ).not.toBeInTheDocument();
   expect(within(list).getByText("Carl (you)")).toBeVisible();
   await t.user.clear(screen.getByRole("searchbox"));
-  expect(filter()).toHaveTextContent("All");
+  expect(filter()).toHaveAccessibleName("Filter people and agents: All");
   await t.user.click(filter());
-  await t.user.click(await screen.findByRole("option", { name: "Agents · 1" }));
+  await t.user.click(
+    await screen.findByRole("menuitemradio", { name: "Agents · 1" }),
+  );
   await t.user.type(screen.getByRole("searchbox"), "Carl");
-  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /^Filter people and agents:/ }),
+  ).not.toBeInTheDocument();
   const carl = within(list).getByText("Carl (you)");
   expect(carl).toBeVisible();
   // Only rows you can add show the typed letters; members stay unchanged.
@@ -1800,7 +1809,7 @@ it("filters by present groups and resets to All on any search input", async () =
 it("hides the identity filter when everyone is a person, including owners", async () => {
   await setup("owner", "owner");
   expect(
-    screen.queryByRole("combobox", { name: "Filter people and agents" }),
+    screen.queryByRole("button", { name: /^Filter people and agents:/ }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "People · 3" })).toBeVisible();
 });
@@ -1808,9 +1817,11 @@ it("hides the identity filter when everyone is a person, including owners", asyn
 it("keeps agent owners in the Agents filter", async () => {
   const t = await setup("owner", "owner", true, undefined, true);
   await t.user.click(
-    screen.getByRole("combobox", { name: "Filter people and agents" }),
+    screen.getByRole("button", { name: /^Filter people and agents:/ }),
   );
-  await t.user.click(await screen.findByRole("option", { name: "Agents · 1" }));
+  await t.user.click(
+    await screen.findByRole("menuitemradio", { name: "Agents · 1" }),
+  );
   expect(
     screen.getByRole("button", { name: /^Open profile for Morgan/ }),
   ).toBeVisible();
@@ -1822,21 +1833,23 @@ it("keeps agent owners in the Agents filter", async () => {
 it("preserves the identity filter through role changes and resets on reopen", async () => {
   const t = await setup("admin", "member", true, undefined, true);
   const filter = () =>
-    screen.getByRole("combobox", { name: "Filter people and agents" });
+    screen.getByRole("button", { name: /^Filter people and agents:/ });
   await t.user.click(filter());
-  await t.user.click(await screen.findByRole("option", { name: "Agents · 1" }));
+  await t.user.click(
+    await screen.findByRole("menuitemradio", { name: "Agents · 1" }),
+  );
   t.confirm("admin");
   await act(async () => {
     await t.session.memberAdministration.refresh(id);
   });
-  expect(filter()).toHaveTextContent("Agents");
+  expect(filter()).toHaveAccessibleName("Filter people and agents: Agents");
   expect(
     screen.getByRole("button", { name: /Open profile for Morgan/ }),
   ).toHaveAccessibleName(/, admin$/);
   await t.user.click(screen.getByRole("button", { name: "Close" }));
   await t.user.click(screen.getByRole("button", { name: "Access" }));
   await screen.findByText("Morgan");
-  expect(filter()).toHaveTextContent("All");
+  expect(filter()).toHaveAccessibleName("Filter people and agents: All");
 });
 
 it.each(["bot", "member"])(

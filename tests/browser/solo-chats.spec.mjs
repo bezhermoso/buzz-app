@@ -430,10 +430,7 @@ test("Share grants access and posts a link without promoting or moving the Solo 
     name: "Share",
     exact: true,
   });
-  const copy = dialog.getByRole("button", { name: "Copy link", exact: true });
-  // Copy link leads Share. At a narrow width with enlarged text
-  // the footer actions wrap; real flex wrapping, Tab order and hit testing are
-  // invisible to mounted DOM tests.
+  // Enlarged-text footer reflow, Tab order and hit testing require a browser.
   await page.setViewportSize({ width: 390, height: 850 });
   await page.evaluate(() =>
     document.documentElement.style.setProperty("--buzz-text-scale", "2"),
@@ -441,32 +438,15 @@ test("Share grants access and posts a link without promoting or moving the Solo 
   const actions = dialog.locator(".buzz-dialog-actions");
   await expect
     .poll(() =>
-      actions.evaluate((footer) => {
-        const widest = Math.max(
-          ...[...footer.querySelectorAll("button")].map(
-            (button) => button.getBoundingClientRect().width,
-          ),
-        );
-        // Include the shared focus-ring inset around an oversized action.
-        const style = getComputedStyle(footer);
-        const inset =
-          parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-        return (
-          footer.scrollWidth - Math.max(footer.clientWidth, widest + inset)
-        );
-      }),
+      actions.evaluate((footer) => ({
+        x: footer.scrollWidth - footer.clientWidth,
+        y: footer.scrollHeight - footer.clientHeight,
+      })),
     )
-    .toBeLessThanOrEqual(1);
-  await expect
-    .poll(async () => {
-      const copied = await copy.boundingBox();
-      const shared = await primary.boundingBox();
-      return shared.y >= copied.y + copied.height;
-    })
-    .toBe(true);
+    .toEqual({ x: 0, y: 0 });
   // Focus the preceding body control, then traverse every wrapped action.
   await search.focus();
-  for (const action of [copy, primary]) {
+  for (const action of [primary]) {
     for (
       let step = 0;
       !(await action.evaluate((el) => el === document.activeElement));
@@ -505,8 +485,7 @@ test("Share grants access and posts a link without promoting or moving the Solo 
   await expect(hint).toBeVisible();
   await page.mouse.move(0, 0);
   await expect(hint).not.toBeVisible();
-  await copy.focus();
-  await page.keyboard.press("Tab");
+  await primary.focus();
   await expect(primary).toBeFocused();
   await expect(hint).toBeVisible();
   await expect(primary).toHaveAccessibleDescription(

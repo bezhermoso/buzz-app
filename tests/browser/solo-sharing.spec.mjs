@@ -261,44 +261,22 @@ test("Share dialog keeps actions reachable across viewports and enlarged text an
       scale,
     );
     const footer = dialog.locator(".buzz-dialog-actions");
-    const copy = dialog.getByRole("button", {
-      name: /^(Copy link|Link copied)$/,
-    });
-    // Each button gets its own flex item. Horizontal overflow is allowed
-    // only for a single oversized action, not the combined Copy/Share row.
     await expect
       .poll(() =>
-        footer.evaluate((el) => {
-          const widest = Math.max(
-            ...[...el.querySelectorAll("button")].map(
-              (button) => button.getBoundingClientRect().width,
-            ),
-          );
-          // Include the shared focus-ring inset around an oversized action.
-          const style = getComputedStyle(el);
-          const inset =
-            parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-          return el.scrollWidth - Math.max(el.clientWidth, widest + inset);
-        }),
+        footer.evaluate((el) => ({
+          x: el.scrollWidth - el.clientWidth,
+          y: el.scrollHeight - el.clientHeight,
+        })),
       )
-      .toBeLessThanOrEqual(1);
+      .toEqual({ x: 0, y: 0 });
     if (scale === 1) {
       await expect
         .poll(() => footer.evaluate((el) => el.scrollWidth - el.clientWidth))
         .toBeLessThanOrEqual(1);
       await reachable(share, { scroll: false });
-      await reachable(copy, { scroll: false });
     } else {
-      await expect
-        .poll(async () => {
-          const shared = await share.boundingBox();
-          const copied = await copy.boundingBox();
-          return shared.y >= copied.y + copied.height;
-        })
-        .toBe(true);
-      // Real Tab still reaches both wrapped controls, without programmatic
-      // scrolling or focus bypassing the actual tab order.
-      for (const action of [share, copy]) {
+      // Real Tab reaches the primary action after the body controls.
+      for (const action of [share]) {
         for (
           let step = 0;
           !(await action.evaluate((el) => el === document.activeElement));
@@ -322,23 +300,9 @@ test("Share dialog keeps actions reachable across viewports and enlarged text an
         await expect(action).toBeFocused();
         await expect(action).toBeInViewport({ ratio: 1 });
       }
-      await reachable(copy, { scroll: false });
-      await page.keyboard.press("Enter");
-      await expect
-        .poll(
-          async () =>
-            (await copy.innerText()) === "Link copied" ||
-            (await dialog
-              .getByRole("alert")
-              .filter({ hasText: "Couldn’t copy the link." })
-              .count()) > 0,
-        )
-        .toBe(true);
-      await expect(copy).toBeFocused();
     }
   }
-  // Submit the wrapped primary action through its actual keyboard path too.
-  await page.keyboard.press("Tab");
+  // Submit the focused primary action through its actual keyboard path too.
   await expect(share).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(dialog).not.toBeVisible();

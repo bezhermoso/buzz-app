@@ -1,5 +1,4 @@
 import { archiveHides } from "../../features/relay/identity-archives";
-import { motion, useReducedMotion } from "motion/react";
 import { Button as BaseButton } from "@base-ui/react/button";
 import referenceStyles from "../../shared/InlineReference.module.css";
 import { npubEncode } from "nostr-tools/nip19";
@@ -47,7 +46,6 @@ import {
   canShareSoloChat,
 } from "../../features/channel-members/members";
 import { ownSolo } from "../../features/solo/labels";
-import { soloChatLink } from "../../features/solo/share";
 import {
   formatPublicKey,
   publicKeyLabels,
@@ -61,13 +59,16 @@ import {
   MenuGroup,
   MenuGroupLabel,
   MenuItem,
+  MenuRoot,
+  MenuTrigger,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
 } from "../../shared/design-system/ui/Menu";
 import { ChoiceRow } from "../../shared/design-system/ui/ChoiceRow";
-import { Select } from "../../shared/design-system/ui/Select";
 import { SearchField } from "../../shared/design-system/ui/SearchField";
 import { Avatar } from "../../shared/design-system/ui/Avatar";
 import { Accordion } from "../../shared/design-system/ui/Accordion";
-import { Tooltip } from "../../shared/design-system/ui/Tooltip";
 import {
   PopoverRoot,
   PopoverTrigger,
@@ -77,6 +78,7 @@ import { NavigationItem } from "../../shared/design-system/ui/NavigationItem";
 import {
   ArrowsClockwiseIcon,
   CircleNotchIcon,
+  Filter2Icon,
   InfoIcon,
   UsersIcon,
   XIcon,
@@ -514,7 +516,6 @@ function TeamRow({
 /** The one access dialog. Any conversation lists and adds members; a Solo chat
  * adds people under its share rule and can also be shared to a channel. */
 export function ChannelMembersDialog({
-  communityScope,
   session,
   channelId,
   close,
@@ -529,7 +530,6 @@ export function ChannelMembersDialog({
   navigator,
   signal,
 }: {
-  communityScope?: string | undefined;
   session: RelaySession;
   channelId: string;
   close(): void;
@@ -542,7 +542,6 @@ export function ChannelMembersDialog({
   /** The visit that opened this dialog; leaving it retires late results. */
   signal?: AbortSignal | undefined;
 } & MemberNavigation) {
-  const reducedMotion = useReducedMotion();
   const presenceId = useId();
   const openingDestination = useRef(false);
   const messagePending = useRef(false);
@@ -626,7 +625,6 @@ export function ChannelMembersDialog({
       .map(([key, item]) => [key, item.error] as const),
   ]);
   const [notice, setNotice] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
   const [rosterReadError, setRosterReadError] = useState("");
   const [nameError, setNameError] = useState("");
   const [rosterReading, setRosterReading] = useState(true);
@@ -705,6 +703,15 @@ export function ChannelMembersDialog({
     !channel.cached &&
     !channel.archived &&
     (channel.readOnly || session.channelDetails.available);
+  const accessControl = generalAccess ? (
+    <ChannelGeneralAccess
+      key={channelId}
+      capability={session.channelDetails}
+      recovery={session.recovery}
+      channelId={channelId}
+      channel={channel}
+    />
+  ) : null;
   // Solo access is verified by the sharing roster read; channels read 39002.
   const rosterBusy = solo ? share.rosterState === "loading" : rosterReading;
   const rosterError = solo
@@ -1270,15 +1277,6 @@ export function ChannelMembersDialog({
   const highlightedPerson = visibleCandidates.find(
     (person) => person.pubkey === highlight.active,
   );
-  const copy = async () => {
-    try {
-      // The `navigator` prop is app navigation; the clipboard is the browser's.
-      await globalThis.navigator.clipboard.writeText(soloChatLink(channelId));
-      setCopyStatus("Link copied");
-    } catch {
-      setCopyStatus("Couldn’t copy the link.");
-    }
-  };
 
   const searchAgents = search.people
     .filter((person) => person.isAgent)
@@ -1539,17 +1537,7 @@ export function ChannelMembersDialog({
         )
       }
       closeLabel={selection ? "Back to members" : "Close"}
-      leadingActions={
-        !selection && (
-          <Tooltip content="Copying a link does not grant access.">
-            <Button onClick={() => void copy()}>
-              <span aria-live="polite">
-                {copyStatus === "Link copied" ? "Link copied" : "Copy link"}
-              </span>
-            </Button>
-          </Tooltip>
-        )
-      }
+      leadingActions={!selection && !channel?.readOnly && accessControl}
       actions={
         selection ? (
           <>
@@ -1590,55 +1578,27 @@ export function ChannelMembersDialog({
             </Button>
           </>
         ) : solo ? (
-          <>
-            <Button
-              variant="prominent"
-              title={
-                share.destination
-                  ? "Sharing grants access and posts a link in the selected channel."
-                  : undefined
-              }
-              loading={share.busy}
-              disabled={!share.eligible && !!share.destination}
-              onClick={() => void share.submit()}
-            >
-              {share.destination
-                ? share.failed
-                  ? "Retry share"
-                  : "Share"
-                : "Done"}
-            </Button>
-          </>
+          <Button
+            variant="prominent"
+            title={
+              share.destination
+                ? "Sharing grants access and posts a link in the selected channel."
+                : undefined
+            }
+            loading={share.busy}
+            disabled={!share.eligible && !!share.destination}
+            onClick={() => void share.submit()}
+          >
+            {share.destination
+              ? share.failed
+                ? "Retry share"
+                : "Share"
+              : "Done"}
+          </Button>
         ) : (
           <Button variant="prominent" onClick={close}>
             Done
           </Button>
-        )
-      }
-      headerActions={
-        !selection && (
-          <IconButton
-            hint="familiar"
-            variant="ghost"
-            size="compact"
-            aria-label="Refresh member data"
-            title="Refresh member data"
-            aria-busy={refreshing}
-            disabled={refreshing || mutationPending}
-            focusableWhenDisabled
-            onClick={refreshMembers}
-            icon={
-              <ArrowsClockwiseIcon
-                size={16}
-                aria-hidden="true"
-                className={
-                  refreshing && !initialLoading
-                    ? "motion-safe:animate-spin"
-                    : undefined
-                }
-              />
-            }
-          />
         )
       }
       initialFocus={solo && share.busy ? true : input}
@@ -1653,7 +1613,7 @@ export function ChannelMembersDialog({
         )
       ) : (
         <div className={styles.layout}>
-          <div className="flex shrink-0 items-center">
+          <div className="flex shrink-0 items-center gap-2">
             <div className="min-w-0 flex-1">
               <SearchField
                 inputRef={input}
@@ -1686,6 +1646,49 @@ export function ChannelMembersDialog({
                 onKeyDown={(event) => {
                   highlight.keyDown(event);
                 }}
+                trailing={
+                  !initialLoading &&
+                  presentGroups.length > 1 &&
+                  query.length === 0 ? (
+                    <MenuRoot>
+                      <MenuTrigger
+                        render={
+                          <IconButton
+                            aria-label={`Filter people and agents: ${roleFilter}`}
+                            title={`Filter people and agents: ${roleFilter}`}
+                            variant={
+                              roleFilter === "All" ? "ghost" : "prominent"
+                            }
+                            icon={<Filter2Icon size={16} aria-hidden="true" />}
+                          />
+                        }
+                      />
+                      <MenuPopup align="end">
+                        <MenuRadioGroup
+                          value={roleFilter}
+                          onValueChange={(value) => {
+                            setSelectedRole(value);
+                            if (scrollport.current)
+                              scrollport.current.scrollTop = 0;
+                          }}
+                        >
+                          {[
+                            { name: "All", count: members.size },
+                            ...presentGroups,
+                          ].map((group) => (
+                            <MenuRadioItem
+                              key={group.name}
+                              value={group.name}
+                              closeOnClick
+                            >
+                              {`${group.name} · ${group.count}`}
+                            </MenuRadioItem>
+                          ))}
+                        </MenuRadioGroup>
+                      </MenuPopup>
+                    </MenuRoot>
+                  ) : undefined
+                }
                 maxLength={256}
               />
               <span className="sr-only" role="status">
@@ -1694,52 +1697,28 @@ export function ChannelMembersDialog({
                   : ""}
               </span>
             </div>
-            {!initialLoading && presentGroups.length > 1 && (
-              <motion.div
-                className="shrink-0 overflow-hidden"
-                initial={false}
-                animate={
-                  query.length > 0
-                    ? { width: 0, opacity: 0, marginLeft: 0 }
-                    : {
-                        width: "auto",
-                        opacity: 1,
-                        marginLeft: "var(--space-2)",
-                      }
-                }
-                transition={{
-                  duration: reducedMotion ? 0 : 0.14,
-                  ease: [0.23, 1, 0.32, 1],
-                }}
-                inert={query.length > 0}
-                aria-hidden={query.length > 0 || undefined}
-              >
-                <Select
-                  variant="compact"
-                  size="md"
-                  label="Filter people and agents"
-                  align="end"
-                  value={roleFilter}
-                  valueLabel={roleFilter}
-                  groups={[
-                    {
-                      label: "",
-                      options: [
-                        { name: "All", count: members.size },
-                        ...presentGroups,
-                      ].map((group) => ({
-                        value: group.name,
-                        label: `${group.name} · ${group.count}`,
-                      })),
-                    },
-                  ]}
-                  onValueChange={(value) => {
-                    setSelectedRole(value);
-                    if (scrollport.current) scrollport.current.scrollTop = 0;
-                  }}
+            <IconButton
+              hint="familiar"
+              variant="ghost"
+              size="compact"
+              aria-label="Refresh member data"
+              title="Refresh member data"
+              aria-busy={refreshing}
+              disabled={refreshing || mutationPending}
+              focusableWhenDisabled
+              onClick={refreshMembers}
+              icon={
+                <ArrowsClockwiseIcon
+                  size={16}
+                  aria-hidden="true"
+                  className={
+                    refreshing && !initialLoading
+                      ? "motion-safe:animate-spin"
+                      : undefined
+                  }
                 />
-              </motion.div>
-            )}
+              }
+            />
           </div>
           {solo && (
             <p
@@ -2131,11 +2110,6 @@ export function ChannelMembersDialog({
                 {notice}
               </p>
             )}
-            {copyStatus && copyStatus !== "Link copied" && (
-              <p role="alert" className="text-body-sm text-subtle">
-                {copyStatus}
-              </p>
-            )}
             {solo &&
               (!share.eligible && share.destination ? (
                 <p role="alert">
@@ -2150,17 +2124,7 @@ export function ChannelMembersDialog({
                 </p>
               ) : null)}
           </section>
-          {generalAccess && (
-            <ChannelGeneralAccess
-              communityReader={communities}
-              communityScope={communityScope}
-              key={channelId}
-              capability={session.channelDetails}
-              recovery={session.recovery}
-              channelId={channelId}
-              channel={channel}
-            />
-          )}
+          {channel?.readOnly && accessControl}
         </div>
       )}
     </Dialog>

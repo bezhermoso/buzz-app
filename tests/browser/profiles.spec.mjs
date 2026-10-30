@@ -809,7 +809,7 @@ test("member rows hand off to Profiles without trapping or losing keyboard focus
       const footerBounds = await dialog
         .locator(".buzz-dialog-actions")
         .boundingBox();
-      // The roster scrolls inside the body, above the Copy link / Done footer.
+      // The roster scrolls inside the body, above the access / Done footer.
       expect(bodyBounds.y + bodyBounds.height).toBeLessThanOrEqual(
         footerBounds.y + 1,
       );
@@ -825,7 +825,7 @@ test("member rows hand off to Profiles without trapping or losing keyboard focus
       const member = group.getByRole("listitem").first();
       await expect(member).toHaveCSS("padding-inline-end", "0px");
       const header = dialog.locator(".buzz-dialog-header");
-      const refresh = header.getByRole("button", {
+      const refresh = dialog.getByRole("button", {
         name: "Refresh member data",
       });
       const close = header.getByRole("button", {
@@ -835,10 +835,13 @@ test("member rows hand off to Profiles without trapping or losing keyboard focus
       await expect(refresh).toHaveAttribute("data-icon-size", "compact");
       const refreshBounds = await refresh.boundingBox();
       const closeBounds = await close.boundingBox();
-      expect(refreshBounds.x + refreshBounds.width).toBeLessThanOrEqual(
-        closeBounds.x,
+      const searchFrame = await search.evaluate((node) =>
+        node.closest(".buzz-input-group").getBoundingClientRect().toJSON(),
       );
-      expect(refreshBounds.y).toBe(closeBounds.y);
+      expect(refreshBounds.x - searchFrame.x - searchFrame.width).toBe(8);
+      expect(refreshBounds.y + refreshBounds.height / 2).toBe(
+        searchFrame.y + searchFrame.height / 2,
+      );
       expect(refreshBounds.width).toBe(closeBounds.width);
       expect(refreshBounds.height).toBe(closeBounds.height);
       for (const button of [refresh, close]) {
