@@ -94,6 +94,18 @@ function show(
 const body = () => screen.queryByText("Ran", { selector: "strong" });
 const line = () =>
   screen.getByRole("button", { name: /, collapsed message: / });
+const trigger = () =>
+  screen.getByRole("button", { name: "More message actions" });
+/** Opens the ⋯ menu from the keyboard and chooses `name` there. */
+async function choose(user: ReturnType<typeof userEvent.setup>, name: string) {
+  trigger().focus();
+  await user.keyboard("{Enter}");
+  (await screen.findByRole("menuitem", { name })).focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(screen.queryByRole("menuitem", { name })).toBeNull(),
+  );
+}
 
 it("collapses an agent message to its opening line and expands it again", async () => {
   const user = userEvent.setup();
@@ -117,10 +129,11 @@ it("collapses an agent message to its opening line and expands it again", async 
   expect(
     screen.getByRole("button", { name: "Expand message" }),
   ).not.toHaveAttribute("aria-expanded");
-  // From the keyboard, on the line itself.
+  // From the keyboard, on the line itself: focus stays in the row.
   line().focus();
   await user.keyboard("{Enter}");
   expect(body()).toBeInTheDocument();
+  expect(trigger()).toHaveFocus();
   expect(localStorage.getItem(`buzz.collapsed-messages.v1:${scope}`)).toBe(
     "[]",
   );
@@ -169,6 +182,34 @@ it("offers collapse only for agent messages where the host supports it", () => {
   expect(
     screen.queryByRole("button", { name: /Collapse message|Expand message/ }),
   ).toBeNull();
+});
+
+it("returns focus to the menu trigger after toggling from the menu", async () => {
+  const user = userEvent.setup();
+  show(row);
+  await choose(user, "Collapse message");
+  expect(body()).toBeNull();
+  expect(trigger()).toHaveFocus();
+  await choose(user, "Expand message");
+  expect(body()).toBeInTheDocument();
+  expect(trigger()).toHaveFocus();
+});
+
+it("keeps focus where it was when a toggle cannot be saved", async () => {
+  const user = userEvent.setup();
+  show(row);
+  await user.click(screen.getByRole("button", { name: "Collapse message" }));
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("full", "QuotaExceededError");
+  });
+  // The line stays, and so does focus on it.
+  line().focus();
+  await user.keyboard("{Enter}");
+  expect(line()).toHaveFocus();
+  // From the menu, focus returns to its trigger.
+  await choose(user, "Expand message");
+  expect(line()).toBeInTheDocument();
+  expect(trigger()).toHaveFocus();
 });
 
 it("says so and stays expanded when the choice cannot be saved", async () => {
