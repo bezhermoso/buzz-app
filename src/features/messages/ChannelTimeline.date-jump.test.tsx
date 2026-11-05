@@ -444,13 +444,13 @@ function layout(tops: Record<string, number>) {
 }
 const pinned = () => document.querySelector<HTMLElement>("[data-pinned-day]");
 
-it("the pinned day shows the top message's day once its divider scrolls away", () => {
+it("the pinned day shows the top message's day once its divider scrolls away", async () => {
   const { owner, content } = fixture();
   try {
     render(content());
     layout({ "oct-20": -400, "oct-29": -100, "oct-30": 200 });
     fireEvent.scroll(screen.getByLabelText("Channel message history"));
-    expect(pinned()).toHaveTextContent("Yesterday");
+    await waitFor(() => expect(pinned()).toHaveTextContent("Yesterday"));
     // Mouse only: the dividers carry the same menu for keyboard and screen readers.
     expect(pinned()).toHaveAttribute("aria-hidden", "true");
     expect(pinned()?.querySelector("button")).toHaveAttribute("tabindex", "-1");
@@ -459,27 +459,47 @@ it("the pinned day shows the top message's day once its divider scrolls away", (
   }
 });
 
-it("the pinned day hides while the top message's divider is in view", () => {
+it("the pinned day hides while the top message's divider is in view", async () => {
   const { owner, content } = fixture();
   try {
     render(content());
     layout({ "oct-20": -400, "oct-29": -100, "oct-30": 200 });
     fireEvent.scroll(screen.getByLabelText("Channel message history"));
-    expect(pinned()).not.toBeNull();
+    await waitFor(() => expect(pinned()).not.toBeNull());
     layout({ "oct-20": -300, "oct-29": 0, "oct-30": 300 });
     fireEvent.scroll(screen.getByLabelText("Channel message history"));
+    await waitFor(() => expect(pinned()).toBeNull());
+  } finally {
+    owner.dispose();
+  }
+});
+
+it("the pinned day reads the rows the list renders after a scroll", async () => {
+  const { owner, content } = fixture();
+  try {
+    render(content());
+    // Let the mount's own read run first.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    // The scroll event still sees the rows from before it.
+    layout({ "oct-20": -400, "oct-29": -100, "oct-30": 200 });
+    fireEvent.scroll(screen.getByLabelText("Channel message history"));
+    // The virtual list then renders the rows for the new offset.
+    layout({ "oct-20": -300, "oct-29": 0, "oct-30": 300 });
+    await waitFor(() => expect(pinned()).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(pinned()).toBeNull();
   } finally {
     owner.dispose();
   }
 });
 
-it("the pinned day is off without dateJump", () => {
+it("the pinned day is off without dateJump", async () => {
   const { owner, content } = fixture({ dateJump: false });
   try {
     render(content());
     layout({ "oct-20": -400, "oct-29": -100, "oct-30": 200 });
     fireEvent.scroll(screen.getByLabelText("Channel message history"));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(pinned()).toBeNull();
   } finally {
     owner.dispose();
@@ -495,6 +515,7 @@ it("the pinned day opens the jump menu and returns focus to the timeline", async
     const history = screen.getByLabelText("Channel message history");
     fireEvent.scroll(history);
     const user = userEvent.setup();
+    await waitFor(() => expect(pinned()).not.toBeNull());
     const trigger = pinned()?.querySelector("button");
     assert.exists(trigger);
     await user.click(trigger);
