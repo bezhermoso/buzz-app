@@ -927,13 +927,30 @@ function Timeline({
     },
     [createdAtById],
   );
+  // Virtual rows mount after the commit that adds them, and after the scroll
+  // event that brings them into range: read them a frame later.
+  const pinnedFrame = useRef<number | undefined>(undefined);
+  const schedulePinnedDay = useCallback(
+    (element: HTMLElement) => {
+      if (pinnedFrame.current !== undefined)
+        cancelAnimationFrame(pinnedFrame.current);
+      pinnedFrame.current = requestAnimationFrame(() => {
+        pinnedFrame.current = undefined;
+        updatePinnedDay(element);
+      });
+    },
+    [updatePinnedDay],
+  );
   useLayoutEffect(() => {
     const element = scroller.current;
     if (!dateJumps || !element) return;
-    // Virtual rows mount after the commit that adds them.
-    const frame = requestAnimationFrame(() => updatePinnedDay(element));
-    return () => cancelAnimationFrame(frame);
-  }, [dateJumps, updatePinnedDay]);
+    schedulePinnedDay(element);
+    return () => {
+      if (pinnedFrame.current !== undefined)
+        cancelAnimationFrame(pinnedFrame.current);
+      pinnedFrame.current = undefined;
+    };
+  }, [dateJumps, schedulePinnedDay]);
   const jumpToLatest = useCallback(() => {
     if (!handle.current || !rows.length) return;
     // Latest supersedes a pending date jump, silently.
@@ -1797,7 +1814,7 @@ function Timeline({
         }
         loadNearTop(element);
         loadNearBottom(element);
-        if (dateJumps) updatePinnedDay(element);
+        if (dateJumps) schedulePinnedDay(element);
       }}
     >
       <div
