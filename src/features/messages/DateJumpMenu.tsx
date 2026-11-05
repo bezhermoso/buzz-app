@@ -125,11 +125,14 @@ export function DateJumpDialog({
       open={open}
       onOpenChange={onOpenChange}
       size="compact"
+      headerGap="compact"
+      footerGap="compact"
       title="Jump to a specific date"
       description="Pick a day to see its first message."
       finalFocus={trigger}
     >
       <Calendar
+        fill
         mode="single"
         defaultMonth={today}
         startMonth={new Date(2000, 0)}
