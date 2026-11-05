@@ -358,14 +358,17 @@ function MessageRowContent({
   const collapsed =
     useMessageCollapsed(canCollapse ? scope : undefined, row.id) && canCollapse;
   const [collapseFailed, setCollapseFailed] = useState(false);
+  /** Whether the choice was saved. */
   const toggleCollapsed = () => {
-    if (!scope || !onCollapseToggle) return;
+    if (!scope || !onCollapseToggle) return false;
     setCollapseFailed(false);
     onCollapseToggle(row.id);
     try {
       setMessageCollapsed(scope, row.id, !collapsed);
+      return true;
     } catch {
       setCollapseFailed(true);
+      return false;
     }
   };
   const shown = shownRow ?? row;
@@ -1111,7 +1114,11 @@ function MessageRowContent({
                 <CollapsedMessageLine
                   row={row}
                   author={name}
-                  onExpand={toggleCollapsed}
+                  onExpand={(focused) => {
+                    // The line goes once expanded; keep focus in the row.
+                    if (toggleCollapsed() && focused)
+                      menuTrigger.current?.focus({ preventScroll: true });
+                  }}
                 />
               )}
               {chatCards.length > 0 && !collapsed && (

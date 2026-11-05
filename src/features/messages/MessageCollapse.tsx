@@ -7,7 +7,6 @@ import { IconButton } from "../../shared/design-system/ui/IconButton";
 import { MenuIcon, MenuItem } from "../../shared/design-system/ui/Menu";
 import type { ChannelMessage } from "../relay/contracts";
 import { plainText } from "../notifications/content";
-import { useAfterMessageMenuClose } from "./MessageActionBar";
 import styles from "./Messages.module.css";
 
 const label = (collapsed: boolean) =>
@@ -33,7 +32,8 @@ export function MessageCollapseButton({
   );
 }
 
-/** The "More message actions" item; toggles once the menu has closed. */
+/** The "More message actions" item. It opens nothing, so the menu returns
+ * focus to its trigger as usual. */
 export function MessageCollapseItem({
   collapsed,
   onToggle,
@@ -41,9 +41,8 @@ export function MessageCollapseItem({
   collapsed: boolean;
   onToggle(): void;
 }) {
-  const afterClose = useAfterMessageMenuClose();
   return (
-    <MenuItem onClick={() => (afterClose ? afterClose(onToggle) : onToggle())}>
+    <MenuItem onClick={onToggle}>
       <MenuIcon>{collapsed ? <ArrowsOutIcon /> : <ArrowsInIcon />}</MenuIcon>
       {label(collapsed)}
     </MenuItem>
@@ -58,7 +57,8 @@ export function CollapsedMessageLine({
 }: {
   row: ChannelMessage;
   author: string;
-  onExpand(): void;
+  /** `focused` when the line had focus, which leaves with it. */
+  onExpand(focused: boolean): void;
 }) {
   const text =
     (row.diff
@@ -73,7 +73,9 @@ export function CollapsedMessageLine({
       data-collapsed-message
       aria-expanded={false}
       aria-label={`${author}, collapsed message: ${text}. Expand message`}
-      onClick={onExpand}
+      onClick={(event) =>
+        onExpand(document.activeElement === event.currentTarget)
+      }
     >
       <span className={styles.collapsedText} aria-hidden="true">
         {text}
